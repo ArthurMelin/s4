@@ -1,4 +1,5 @@
 import argparse
+from math import log2
 from typing import Any, Generator, Literal, NamedTuple, Optional, TypedDict, cast
 
 from ..client import S3Interface, S4Interface, S4BucketConfig
@@ -77,3 +78,8 @@ def paginate(client: S3Interface,
     paginator = client.get_paginator("list_objects_v2")
     for page in paginator.paginate(**paginate_args):
         yield from map(lambda c: cast(str, c["Key"]), page.get("Contents", []))
+
+def to_human_readable(x: int):
+    exp = 0 if x == 0 else int(log2(x) / 10)
+    prefix = ["", "ki", "Mi", "Gi", "Ti", "Pi"]
+    return f"{x / 1024**exp:.4g} {prefix[exp]}B"

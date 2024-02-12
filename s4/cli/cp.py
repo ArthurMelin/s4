@@ -3,6 +3,7 @@ import getpass
 import hashlib
 import os
 import subprocess
+import sys
 import threading
 from typing import Any
 
@@ -10,7 +11,7 @@ import boto3.s3.transfer
 
 from .. import crypto
 from ..client import S4BucketConfig
-from .utils import Clients, PathInfo, paginate, parse_path
+from .utils import Clients, PathInfo, paginate, parse_path, to_human_readable
 
 
 help = "copy files and objects to and from S3"
@@ -131,6 +132,27 @@ def _get_transfer_config(client_config: dict):
 
     return transfer_config
 
+def _progress_callback(clients: Clients, src: PathInfo, s4_configs: dict[str, S4BucketConfig]):
+    lock = threading.Lock()
+    transfered = 0
+    if src.kind == "local":
+        st = os.stat(src.key)
+        total = st.st_size
+    else:
+        extra_args = {}
+        if src.kind == "s4":
+            extra_args["S4Config"] = s4_configs[src.bucket]
+        head = clients[src.kind].head_object(Bucket=src.bucket, Key=src.key, **extra_args)
+        total = head["ContentLength"]
+
+    def cb(delta: int):
+        nonlocal transfered
+        with lock:
+            transfered = min(transfered + delta, total)
+            sys.stderr.write(f"\r{src.key}: {to_human_readable(transfered)} / {to_human_readable(total)}")
+
+    return cb
+
 def _do_copy(
     clients: Clients,
     src: PathInfo,
@@ -161,6 +183,7 @@ def _do_copy(
             Key=dst.key,
             ExtraArgs=extra_args,
             Config=transfer_config,
+            Callback=_progress_callback(clients, src, s4_configs),
         )
     print(f"copy: {src} to {dst}")
 
@@ -178,12 +201,14 @@ def _do_transfer(
     if dst.kind == "s4":
         extra_args["S4Config"] = s4_configs[dst.bucket]
 
+    progress_callback = _progress_callback(clients, src, s4_configs)
+
     if src.kind == "local":
         assert dst.kind in ("s3", "s4")
-        clients[dst.kind].upload_file(Filename=src.key, Bucket=dst.bucket, Key=dst.key, ExtraArgs=extra_args)
+        clients[dst.kind].upload_file(Filename=src.key, Bucket=dst.bucket, Key=dst.key, ExtraArgs=extra_args, Callback=progress_callback)
     elif dst.kind == "local":
         assert src.kind in ("s3", "s4")
-        clients[src.kind].download_file(Bucket=src.bucket, Key=src.key, Filename=dst.key, ExtraArgs=src_extra_args)
+        clients[src.kind].download_file(Bucket=src.bucket, Key=src.key, Filename=dst.key, ExtraArgs=src_extra_args, Callback=progress_callback)
     else:
         ringbuf = RingBuffer(transfer_config.multipart_chunksize)
 
@@ -194,7 +219,7 @@ def _do_transfer(
 
         def _consumer():
             assert dst.kind in ("s3", "s4")
-            clients[dst.kind].upload_fileobj(Fileobj=ringbuf, Bucket=dst.bucket, Key=dst.key, ExtraArgs=extra_args)
+            clients[dst.kind].upload_fileobj(Fileobj=ringbuf, Bucket=dst.bucket, Key=dst.key, ExtraArgs=extra_args, Callback=progress_callback)
 
         producer = threading.Thread(target=_producer)
         consumer = threading.Thread(target=_consumer)
@@ -215,7 +240,7 @@ def _do_transfer(
         "s4-s3": "transfer",
     }
     label = labels[f"{src.kind}-{dst.kind}"]
-    print(f"{label}: {src} to {dst}")
+    print(f"\r{label}: {src} to {dst}")
 
 
 class RingBuffer:
