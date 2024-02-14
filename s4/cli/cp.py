@@ -155,7 +155,7 @@ def _progress_callback(clients: Clients, src: PathInfo, s4_configs: dict[str, S4
         nonlocal transfered
         with lock:
             transfered = min(transfered + delta, total)
-            sys.stderr.write(f"\r{src.key}: {to_human_readable(transfered)} / {to_human_readable(total)}")
+            sys.stderr.write(f"\r{src.key}: {to_human_readable(transfered)} / {to_human_readable(total)}   ")
 
     return cb
 
@@ -191,7 +191,7 @@ def _do_copy(
             Config=transfer_config,
             Callback=_progress_callback(clients, src, s4_configs),
         )
-    print(f"copy: {src} to {dst}")
+    print(f"\rcopy: {src} to {dst}")
 
 def _do_transfer(
     clients: Clients,
