@@ -70,12 +70,18 @@ def run(args: argparse.Namespace, clients: Clients):
         # iterate through source keys
         for src_key in src_keys:
             # resolve full destination key from source key and prefix
-            if not args.recursive and len(args.srcs) == 1 and not dst.key == "" and not dst.key.endswith("/"):
+            if not args.recursive and len(args.srcs) == 1 and dst.key and not dst.key.endswith("/"):
                 dst_key = dst.key
             else:
                 src_key_cmps = [c for c in src_key.split(os.path.sep if src.kind == "local" else "/") if c != ""]
                 src_key_cmps = src_key_cmps[src_prefix:]
-                dst_key = os.path.join(dst.key, *src_key_cmps) if dst.kind == "local" else "/".join([dst.key, *src_key_cmps]).removeprefix("/")
+                if dst.kind == "local":
+                    dst_key = os.path.join(dst.key, *src_key_cmps)
+                else:
+                    dst_key = dst.key
+                    if dst_key and not dst_key.endswith("/"):
+                        dst_key += "/"
+                    dst_key += "/".join(src_key_cmps)
 
             # make destination parent directories
             if dst.kind == "local":
