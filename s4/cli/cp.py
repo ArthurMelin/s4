@@ -211,21 +211,21 @@ def _do_transfer(
 
     if src.kind == "local":
         assert dst.kind in ("s3", "s4")
-        clients[dst.kind].upload_file(Filename=src.key, Bucket=dst.bucket, Key=dst.key, ExtraArgs=extra_args, Callback=progress_callback)
+        clients[dst.kind].upload_file(Filename=src.key, Bucket=dst.bucket, Key=dst.key, ExtraArgs=extra_args, Callback=progress_callback, Config=transfer_config)
     elif dst.kind == "local":
         assert src.kind in ("s3", "s4")
-        clients[src.kind].download_file(Bucket=src.bucket, Key=src.key, Filename=dst.key, ExtraArgs=src_extra_args, Callback=progress_callback)
+        clients[src.kind].download_file(Bucket=src.bucket, Key=src.key, Filename=dst.key, ExtraArgs=src_extra_args, Callback=progress_callback, Config=transfer_config)
     else:
         ringbuf = RingBuffer(transfer_config.multipart_chunksize)
 
         def _producer():
             assert src.kind in ("s3", "s4")
-            clients[src.kind].download_fileobj(Bucket=src.bucket, Key=src.key, Fileobj=ringbuf, ExtraArgs=src_extra_args)
+            clients[src.kind].download_fileobj(Bucket=src.bucket, Key=src.key, Fileobj=ringbuf, ExtraArgs=src_extra_args, Config=transfer_config)
             ringbuf.close()
 
         def _consumer():
             assert dst.kind in ("s3", "s4")
-            clients[dst.kind].upload_fileobj(Fileobj=ringbuf, Bucket=dst.bucket, Key=dst.key, ExtraArgs=extra_args, Callback=progress_callback)
+            clients[dst.kind].upload_fileobj(Fileobj=ringbuf, Bucket=dst.bucket, Key=dst.key, ExtraArgs=extra_args, Callback=progress_callback, Config=transfer_config)
 
         producer = threading.Thread(target=_producer)
         consumer = threading.Thread(target=_consumer)
